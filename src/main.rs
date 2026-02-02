@@ -2,6 +2,7 @@ mod server;
 mod handler;
 mod command;
 mod parser;
+mod store;
 
 #[tokio::main]
 async fn main() {

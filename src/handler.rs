@@ -3,9 +3,9 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{parser, command::Command};
+use crate::{command::Command, parser, store::Store};
 
-pub async fn handle_client(socket: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_client(socket: TcpStream,store:Store) -> Result<(), Box<dyn std::error::Error>> {
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::new(reader);
 
@@ -23,6 +23,22 @@ pub async fn handle_client(socket: TcpStream) -> Result<(), Box<dyn std::error::
         let cmd = parser::parse_command(&line);
 
         match cmd {
+            Command::Set { key, value } =>{
+                store.set(key, value).await;
+                writer.write_all(b"OK\n").await?;
+            }
+            Command::Get { key } =>{
+                if let Some(val) = store.get(&key).await{
+                    writer.write_all(val.as_bytes()).await?;
+                    writer.write_all(b"\n").await?;
+                }else{
+                    writer.write_all(b"{nil}\n").await?;
+                }
+            }
+            Command::Del { key } => {
+                let deleted = store.del(&key).await;
+                writer.write_all(format!("{}\n",deleted as u8).as_bytes()).await?;
+            }
             Command::Ping => {
                 writer.write_all(b"PONG\n").await?;
             }
