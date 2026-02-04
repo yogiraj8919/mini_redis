@@ -5,7 +5,7 @@ use tokio::{
 
 use tokio::sync::Mutex;
 
-use std::{sync::{Arc}, time::Duration};
+use std::{ sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 use crate::{aof::Aof, command::Command, parser, store::Store};
 
@@ -27,11 +27,21 @@ pub async fn handle_client(socket: TcpStream,store:Store,aof:Arc<Mutex<Aof>>) ->
         let cmd = parser::parse_command(&line);
 
         match cmd {
-            Command::Set { key, value,ex } =>{
+            Command::Set { key, value,ex,.. } =>{
                 let ttl = ex.map(Duration::from_secs);
                 store.set(key.clone(),value.clone(),ttl).await;
                 let mut aof = aof.lock().await;
-                aof.append(&format!("SET {} {}",key,value))?;
+                if let Some(sec) = ex{
+                    let now = SystemTime::now()
+                       .duration_since(UNIX_EPOCH)
+                       .unwrap()
+                       .as_secs();
+                    let expiry_ts = now + sec;
+                     aof.append(&format!("SET {} {} EXAT {}",key,value,expiry_ts))?;
+                }else {
+                     aof.append(&format!("SET {} {}", key, value))?;
+                }
+               
                 writer.write_all(b"OK\n").await?;
             }
             Command::Get { key } =>{

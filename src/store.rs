@@ -1,6 +1,6 @@
 // Store module for mini_redis
 
-use std::{ collections::HashMap, sync::Arc, time::{Instant,Duration}};
+use std::{ collections::HashMap, sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 
 
@@ -15,7 +15,7 @@ pub struct Store{
 
 struct Entry{
     value:String,
-    expires_at:Option<Instant>
+    expires_at:Option<u64>
 }
 
 
@@ -27,16 +27,24 @@ impl Store {
     }
 
     pub async fn set(&self,key:String,value:String,ttl:Option<Duration>){
-        let expires_at = ttl.map(|d| Instant::now() + d);
+        let expires_at = ttl.map(|d| {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() + d.as_secs()
+    });
         let mut map  = self.inner.write().await;
         map.insert(key,Entry { value, expires_at });
     }
 
     pub async fn get(&self,key:&str) -> Option<String>{
         let mut  map = self.inner.write().await;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+           .as_secs();
+        
         if let Some(entry) = map.get(key){
             if let Some(expire) = entry.expires_at{
-                if Instant::now() > expire{
+                if now > expire{
                     //expired -> delete
                     map.remove(key);
                     return None;
@@ -57,10 +65,25 @@ impl Store {
         use crate::parser::parse_command;
         use crate::command::Command;
 
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(); 
+
+
         match parse_command(input) {
-            Command::Set { key, value, ex } => {
-                let ttl = ex.map(Duration::from_secs);
-                self.set(key, value, ttl).await;
+            Command::Set { key, value, exat,.. } => {
+               if let Some(expity_ts) = exat {
+                   if expity_ts <= now{
+                    return;
+                   }
+
+                   let remaining = expity_ts - now;
+                   self.set(key, value, Some(Duration::from_secs(remaining)))
+                   .await;
+               }else {
+                   self.set(key, value, None).await;
+               }
             }
             Command::Del { key }=> {
                 self.del(&key).await;

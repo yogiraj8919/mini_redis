@@ -26,16 +26,22 @@ pub fn parse_command(input:&str) -> Command{
             };
 
             let mut ex = None;
+            let mut exat = None;
 
             if let Some(flag) = parts.next() {
                 if flag.eq_ignore_ascii_case("EX") {
                     if let Some(sec) = parts.next() {
                         ex = sec.parse::<u64>().ok();
+                    }else if flag.eq_ignore_ascii_case("EXAT") {
+                        if let Some(ts) = parts.next() {
+                            exat = ts.parse::<u64>().ok();
+                            
+                        }
                     }
                 }
             }
 
-            Command::Set { key, value ,ex}
+            Command::Set { key, value ,ex,exat}
         },
         "GET" => {
             let key:String = match parts.next() {
